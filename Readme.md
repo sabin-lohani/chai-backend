@@ -2,4 +2,4 @@
 
 This is a backend code of video series with javascript
 
-- [Model link] (https://app.eraser.io/workspace/YtPqZ1VogxGy1jzIDkzj)
+- [Model link](https://app.eraser.io/workspace/YtPqZ1VogxGy1jzIDkzj)
