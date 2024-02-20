@@ -1,7 +1,7 @@
 import asyncHandler from "../utils/asyncHandler.js";
 import ApiError from "../utils/ApiError.js";
 import ApiResponse from "../utils/ApiResponse.js";
-import { uploadOnCloudinary } from "../utils/cloudinary.js";
+import { deleteByPublicId, uploadOnCloudinary } from "../utils/cloudinary.js";
 import User from "../models/user.model.js";
 import jwt from "jsonwebtoken";
 
@@ -15,6 +15,11 @@ const generateTokens = async (userId) => {
   await user.save({ validateBeforeSave: false });
 
   return { accessToken, refreshToken };
+};
+const getPublicIdFromUrl = (url) => {
+  const regex = /\/v\d+\/([^/]+)\.\w{3,4}$/;
+  const match = url.match(regex);
+  return match?.[1];
 };
 
 export const registerUser = asyncHandler(async (req, res) => {
@@ -209,7 +214,13 @@ export const updateUserAvatar = asyncHandler(async (req, res) => {
   const avatar = await uploadOnCloudinary(avatarLocalPath);
   if (!avatar) throw new ApiError(400, "Error while uploading avatar");
 
-  const user = await User.findByIdAndUpdate(
+  const user = await User.findById(req.user._id);
+  const oldAvatar = getPublicIdFromUrl(user.avatar);
+  console.log(oldAvatar);
+
+  await deleteByPublicId(oldAvatar);
+
+  const updatedUser = await User.findByIdAndUpdate(
     req.user._id,
     { $set: { avatar: avatar.url } },
     { new: true }
@@ -217,5 +228,63 @@ export const updateUserAvatar = asyncHandler(async (req, res) => {
 
   return res
     .status(200)
-    .json(new ApiResponse(200, user, "Avatar updated successfully"));
+    .json(new ApiResponse(200, updatedUser, "Avatar updated successfully"));
+});
+
+export const getUserChannelProfile = asyncHandler(async (req, res) => {
+  const { username } = req.params.username?.trim().toLowerCase();
+  if (!username) throw new ApiError(400, "Username is required");
+
+  const channel = await User.aggregate([
+    { $match: { username } },
+    {
+      $lookup: {
+        from: "subscriptions",
+        localField: "_id",
+        foreignField: "channel",
+        as: "subscriptions",
+      },
+    },
+    {
+      $lookup: {
+        from: "subscriptions",
+        localField: "_id",
+        foreignField: "subscriber",
+        as: "subscriptions",
+      },
+    },
+    {
+      $addFields: {
+        subscribersCount: { $size: "$subscribers" },
+        subscriptionsCount: { $size: "$subscriptions" },
+        isSubscribed: {
+          $cond: {
+            if: { $in: [req.user._id, "$subscribers.subscriber"] },
+            then: true,
+            else: false,
+          },
+        },
+      },
+    },
+    {
+      $project: {
+        fullName: 1,
+        username: 1,
+        subscribersCount: 1,
+        subscriptionsCount: 1,
+        avatar: 1,
+        coverImage: 1,
+        email: 1,
+      },
+    },
+  ]);
+  console.log(channel);
+
+  if (!channel?.length) throw new ApiError(404, "Channel not found");
+
+  return res
+    .status(200)
+    .json(
+      new ApiResponse(200, channel[0], "Channel profile fetched successfully")
+    );
 });
