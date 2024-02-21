@@ -242,7 +242,7 @@ export const getUserChannelProfile = asyncHandler(async (req, res) => {
         from: "subscriptions",
         localField: "_id",
         foreignField: "channel",
-        as: "subscriptions",
+        as: "subscribers",
       },
     },
     {
